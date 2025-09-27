@@ -37,7 +37,7 @@ from homeassistant.const import (
     STATE_OFF
 )
 
-from .melview import MelViewAuthentication, MelView, MODE
+from .melview import MODE_ERV, UNIT_TYPE_ERV, MelViewAuthentication, MelView, MODE_ATA
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +46,6 @@ REQUIREMENTS = ['requests']
 DEPENDENCIES = []
 
 HVAC_MODES = [HVACMode.AUTO, HVACMode.COOL, HVACMode.DRY, HVACMode.FAN_ONLY, HVACMode.HEAT, HVACMode.OFF]
-
 
 # ---------------------------------------------------------------
 
@@ -59,8 +58,14 @@ class MelViewClimate(ClimateEntity):
 
         self._name = 'MelView {}'.format(device.get_friendly_name())
         self._unique_id = device.get_id()
-
-        self._operations_list = [x for x in MODE] + [HVACMode.OFF]
+    
+        if self._device.get_unit_type() == UNIT_TYPE_ERV:
+            self._operations_list = []
+            self.preset_list = [x for x in MODE_ERV]
+        else:
+            self._operations_list = [x for x in MODE_ATA] + [HVACMode.OFF]
+            self.preset_list = None
+        
         self._speeds_list = [x for x in self._device.fan_keyed]
 
         self._precision = PRECISION_WHOLE
@@ -73,6 +78,7 @@ class MelViewClimate(ClimateEntity):
         self._target_temp = self._device.get_temperature()
 
         self._mode = self._device.get_mode()
+        self._preset = self._device.get_preset()
         self._speed = self._device.get_speed()
 
         self._state = STATE_OFF
@@ -96,6 +102,7 @@ class MelViewClimate(ClimateEntity):
         self._target_temp = self._device.get_temperature()
 
         self._mode = self._device.get_mode()
+        self._preset = self._device.get_preset()
         self._speed = self._device.get_speed()
 
         self._state = self._mode
@@ -120,6 +127,7 @@ class MelViewClimate(ClimateEntity):
         self._target_temp = self._device.get_temperature()
 
         self._mode = await self._device.async_get_mode()
+        self._preset = await self._device.async_get_preset()
         self._speed = await self._device.async_get_speed()
 
         self._state = self._mode
@@ -147,8 +155,10 @@ class MelViewClimate(ClimateEntity):
         """ Let HASS know feature support
             TODO: Handle looking at the device features?
         """
-        return (ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF)
-
+        if self._device.get_unit_type() == UNIT_TYPE_ERV:
+          return (ClimateEntityFeature.PRESET_MODE | ClimateEntityFeature.FAN_MODE | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF)
+        else:
+          return (ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF)
 
     @property
     def should_poll(self):
@@ -236,6 +246,18 @@ class MelViewClimate(ClimateEntity):
         """
         return self._operations_list
 
+    @property
+    def preset_mode(self):
+        """ Get the current preset mode
+        """
+        return self._preset
+
+    @property
+    def preset_modes(self):
+        """ Get possible preset modes
+        """
+        return self.preset_list
+
 
     @property
     def fan_mode(self):
@@ -306,6 +328,16 @@ class MelViewClimate(ClimateEntity):
         elif self._device.set_mode(mode):
             self._mode = mode
             self._state = mode
+    
+    def set_preset_mode(self, preset_mode):
+        """Set new target preset mode."""
+        if self._device.set_preset(preset_mode):
+            self._preset = preset_mode
+
+    async def async_set_preset_mode(self, preset_mode):
+        """Set new target preset mode."""
+        if await self._device.async_set_preset(preset_mode):
+            self._preset = preset_mode
 
     async def async_turn_on(self) ->None:
         """ Turn on the unit

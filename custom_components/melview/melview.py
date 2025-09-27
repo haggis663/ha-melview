@@ -47,13 +47,29 @@ LOCAL_DATA = """<?xml version="1.0" encoding="UTF-8"?>
 
 # ---------------------------------------------------------------
 
-MODE = {
+# This seems to be a standard heat pump
+MODE_ATA = {
     HVACMode.AUTO: 8,
     HVACMode.HEAT: 1,
     HVACMode.COOL: 3,
     HVACMode.DRY: 2,
     HVACMode.FAN_ONLY: 7
 }
+
+# This section is for a Lossney ERV (Energy Recovery Ventilator)
+# Since it's not possible to add custom climate modes in home assistant,
+# all Lossney modes are modelled as presets: https://developers.home-assistant.io/docs/core/entity/climate?_highlight=climate#hvac-modes`
+PRESET_AUTO = "Auto"
+PRESET_LOSSNAY = "Lossnay"
+PRESET_BYPASS = "Bypass"
+
+MODE_ERV = {
+    PRESET_AUTO: 3,
+    PRESET_LOSSNAY: 1,
+    PRESET_BYPASS: 7,
+}
+
+UNIT_TYPE_ERV = "ERV"
 
 FANSTAGES = {
     1: {5: "On"},
@@ -153,6 +169,7 @@ class MelViewDevice:
 
         self._caps = None
         self._localip = localcontrol
+        self.unit_type = None
 
         self._info_lease_seconds = 30  # Data lasts for 30s.
         self._json = None
@@ -188,6 +205,8 @@ class MelViewDevice:
                 self.fan = FANSTAGES[self._caps['fanstage']]
             if 'hasautofan' in self._caps and self._caps['hasautofan'] == 1:
                 self.fan[0] = 'auto'
+            if self._caps['unittype']:
+                self.unit_type = self._caps['unittype']
             self.fan_keyed = {value: key for key, value in self.fan.items()}
             return True
         if req.status_code == 401 and retry:
@@ -244,6 +263,8 @@ class MelViewDevice:
                 self.fan = FANSTAGES[self._caps['fanstage']]
             if 'hasautofan' in self._caps and self._caps['hasautofan'] == 1:
                 self.fan[0] = 'auto'
+            if self._caps['unittype']:
+                self.unit_type = self._caps['unittype']
             self.fan_keyed = {value: key for key, value in self.fan.items()}
             return True
         if req.status == 401 and retry:
@@ -503,35 +524,78 @@ class MelViewDevice:
     def get_mode(self):
         """ Get the set mode.
         """
+        if self.unit_type == UNIT_TYPE_ERV:
+            return None
+
         if not self._is_info_valid():
             return HVACMode.AUTO
 
         if self.is_power_on():
-            for key, val in MODE.items():
+            for key, val in MODE_ATA.items():
                 if self._json['setmode'] == val:
                     return key
 
         return HVACMode.AUTO
+    
+    def get_preset(self):
+        """ Get the set preset (for ERV units).
+        """
+        if self.unit_type != UNIT_TYPE_ERV:
+            return None
+
+        if not self._is_info_valid():
+            return PRESET_AUTO
+
+        if self.is_power_on():
+            for key, val in MODE_ERV.items():
+                if self._json['setmode'] == val:
+                    return key
+
+        return PRESET_AUTO
+
 
     async def async_get_mode(self):
         """ Get the set mode.
         """
+        if self.unit_type == UNIT_TYPE_ERV:
+            return None
+
         if not await self.async_is_info_valid():
             return HVACMode.AUTO
 
         if await self.async_is_power_on():
-            for key, val in MODE.items():
+            for key, val in MODE_ATA.items():
                 if self._json['setmode'] == val:
                     return key
 
         return HVACMode.AUTO
 
+    async def async_get_preset(self):
+        """ Get the set preset (for ERV units).
+        """
+        if self.unit_type != UNIT_TYPE_ERV:
+            return None
+
+        if not await self.async_is_info_valid():
+            return PRESET_AUTO
+
+        if await self.async_is_power_on():
+            for key, val in MODE_ERV.items():
+                if self._json['setmode'] == val:
+                    return key
+
+        return PRESET_AUTO
 
     def get_zone(self, zoneid):
         return self._zones.get(zoneid)
 
     def get_zones(self):
         return self._zones.values()
+
+    def get_unit_type(self):
+        """ Get the unit type.
+        """
+        return self.unit_type
 
     def is_power_on(self):
         """ Check unit is on.
@@ -553,8 +617,8 @@ class MelViewDevice:
         """ Set the target temperature.
         """
         mode = self.get_mode()
-        min_temp = self._caps['max'][str(MODE[mode])]['min']
-        max_temp = self._caps['max'][str(MODE[mode])]['max']
+        min_temp = self._caps['max'][str(MODE_ATA[mode])]['min']
+        max_temp = self._caps['max'][str(MODE_ATA[mode])]['max']
         if temperature < min_temp:
             _LOGGER.error('temp %.1f lower than min %d for mode %d',
                           temperature, min_temp, mode)
@@ -571,9 +635,9 @@ class MelViewDevice:
         mode = await self.async_get_mode()
         min_temp =19
         max_temp=28
-        if str(MODE[mode]) in self._caps['max']:
-            min_temp = self._caps['max'][str(MODE[mode])]['min']
-            max_temp = self._caps['max'][str(MODE[mode])]['max']
+        if str(MODE_ATA[mode]) in self._caps['max']:
+            min_temp = self._caps['max'][str(MODE_ATA[mode])]['min']
+            max_temp = self._caps['max'][str(MODE_ATA[mode])]['max']
         else:
             min_temp = self._caps['max']['8']['min']
             max_temp = self._caps['max']['8']['max']
@@ -630,10 +694,10 @@ class MelViewDevice:
         if mode != 'Cool' and ('hascoolonly' in self._caps and self._caps['hascoolonly'] == 1):
             _LOGGER.error('only cool mode supported')
             return False
-        if mode not in MODE.keys():
+        if mode not in MODE_ATA.keys():
             _LOGGER.error('mode %d not supported', mode)
             return False
-        return await self.async_send_command('MD{}'.format(MODE[mode]))
+        return await self.async_send_command('MD{}'.format(MODE_ATA[mode]))
 
 
     def set_mode(self, mode):
@@ -653,10 +717,45 @@ class MelViewDevice:
         if mode != 'Cool' and ('hascoolonly' in self._caps and self._caps['hascoolonly'] == 1):
             _LOGGER.error('only cool mode supported')
             return False
-        if mode not in MODE.keys():
+        if mode not in MODE_ATA.keys():
             _LOGGER.error('mode %d not supported', mode)
             return False
-        return self._send_command('MD{}'.format(MODE[mode]))
+        return self._send_command('MD{}'.format(MODE_ATA[mode]))
+    
+    def set_preset(self, preset):
+        """ Set operating preset (for ERV units).
+        """
+        if self.unit_type != UNIT_TYPE_ERV:
+            _LOGGER.error('presets not supported for non-ERV units')
+            return False
+
+        if not self.is_power_on():
+            # Try turn on the unit if off.
+            if not self.power_on():
+                return False
+
+        if preset not in MODE_ERV.keys():
+            _LOGGER.error('preset %s not supported', preset)
+            return False
+        return self._send_command('MD{}'.format(MODE_ERV[preset]))
+    
+    async def async_set_preset(self, preset):
+        """ Set operating preset (for ERV units).
+        """
+        if self.unit_type != UNIT_TYPE_ERV:
+            _LOGGER.error('presets not supported for non-ERV units')
+            return False
+
+        if not await self.async_is_power_on():
+            # Try turn on the unit if off.
+            if not await self.async_power_on():
+                return False
+
+        if preset not in MODE_ERV.keys():
+            _LOGGER.error('preset %s not supported', preset)
+            return False
+
+        return await self.async_send_command('MD{}'.format(MODE_ERV[preset]))
 
     async def async_enable_zone(self, zoneid):
         """ Turn on a zone.

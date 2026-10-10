@@ -3,6 +3,23 @@
 HomeAssistant component for mitsubishi air conditioner (MelView) for Australia and pehaps New Zealand
 It handles climate control as well as zone control
 
+## Sensors
+
+Some units report more than the climate entity shows. Where a unit reports
+them, these are added as sensors:
+
+| Sensor | Status field | Units that report it |
+|---|---|---|
+| Outdoor temperature | `outdoortemp` | Lossnay (air at the outdoor intake), and any other unit that reports it |
+| Supply air temperature | `supplytemp` | Lossnay |
+| Exhaust air temperature | `exhausttemp` | Lossnay |
+| Core efficiency | `coreefficiency` | Lossnay |
+| Filter (problem sensor) | `changefilter` | Lossnay |
+
+They read the status the climate entity already fetches, so they add no
+requests to MelView. A sensor is only created if the unit reported its field
+when the integration started.
+
 
 ## Alternatives with more functionality
 

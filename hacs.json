@@ -1,7 +1,7 @@
 {
   "name": "MelView",
   "hacs": "1.6.0",
-  "domains": ["climate","switch"],
+  "domains": ["climate","switch","sensor","binary_sensor"],
   "iot_class": ["Cloud Polling","Local Push"],
   "homeassistant": "0.118.0",
   "render_readme": true

@@ -533,6 +533,16 @@ class MelViewDevice:
     def get_zones(self):
         return self._zones.values()
 
+    def get_status_value(self, key):
+        """ Get a field from the last status response.
+
+        Does not refresh, so reading it costs no API call. The climate
+        entity's own polling keeps the response current.
+        """
+        if self._json is None:
+            return None
+        return self._json.get(key)
+
     def is_power_on(self):
         """ Check unit is on.
         """

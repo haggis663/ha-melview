@@ -30,7 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
 
-PLATFORMS = [Platform.CLIMATE, Platform.SWITCH]
+PLATFORMS = [Platform.CLIMATE, Platform.SWITCH, Platform.SENSOR,
+             Platform.BINARY_SENSOR]
 
 CONF_LANGUAGE = "language"
 CONFIG_SCHEMA = vol.Schema(
